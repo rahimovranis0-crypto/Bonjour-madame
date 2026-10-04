@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Бонжур, мадам! — Онлайн</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#fff8ed;color:#222}
+main{max-width:720px;margin:auto;padding:20px}.hidden{display:none}.logo{text-align:center;font-size:clamp(40px,11vw,72px);font-weight:1000;line-height:.85;margin:20px 0}
+.card,.panel{background:#fff;border:2px solid #222;border-radius:20px;padding:18px}.card{width:min(210px,52vw);aspect-ratio:2/3;margin:18px auto;display:flex;align-items:center;justify-content:center;font-size:80px;font-weight:1000;box-shadow:0 8px #222}
+button,input{font:inherit}button{width:100%;padding:14px;border-radius:15px;border:2px solid #222;background:#fff;font-weight:900;margin-top:9px}.primary{background:#222;color:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.players{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.player{padding:9px;border:2px solid #222;border-radius:14px;text-align:center;background:#fff;font-size:13px}.status{text-align:center;font-weight:900;min-height:28px;margin:12px 0}.react{display:grid;grid-template-columns:1fr 1fr;gap:7px}.react button:last-child{grid-column:1/-1}
+</style>
+</head>
+<body><main>
+<section id="lobby">
+<div class="logo">🇫🇷<br>БОНЖУР,<br>МАДАМ!</div>
+<div class="panel">
+<label>Твоё имя<br><input id="name" maxlength="20" placeholder="Например, Ранис" style="width:100%;padding:12px;margin-top:5px;border:2px solid #222;border-radius:12px"></label>
+<div class="row"><button id="create" class="primary">Создать комнату</button><button id="join">Войти по коду</button></div>
+<div id="codeBox" class="hidden"><p>Код комнаты: <b id="code"></b></p><input id="roomCode" maxlength="6" placeholder="КОД" style="width:100%;padding:12px;border:2px solid #222;border-radius:12px"><button id="join2">Войти</button></div>
+</div>
+</section>
+
+<section id="room" class="hidden">
+<div class="panel"><h2>Комната <span id="roomCodeView"></span></h2><div id="players" class="players"></div><button id="ready" class="primary">✅ ГОТОВ</button><p id="roomStatus" class="status"></p></div>
+</section>
+
+<section id="game" class="hidden">
+<div class="players" id="gamePlayers"></div>
+<p class="status">Центр: <b id="center">0</b></p>
+<div id="card" class="card">?</div>
+<p id="status" class="status"></p>
+<div id="react" class="react hidden">
+<button data-v="10">🐓 КУ-КУ-РЕКУ!</button><button data-v="J">🤵 MONSIEUR VALET</button>
+<button data-v="Q">👩 BONJOUR MADAME!</button><button data-v="K">🫡 ОТДАТЬ ЧЕСТЬ</button><button data-v="A">✋ ТУЗ!</button>
+</div>
+<button id="play" class="primary">🃏 ВЫЛОЖИТЬ КАРТУ</button>
+</section>
+
+<section id="finished" class="hidden panel" style="text-align:center"><h1>🏆 <span id="winner"></span></h1><button onclick="location.reload()" class="primary">Новая игра</button></section>
+</main>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket=io();let roomCode="",me="";
+const $=s=>document.querySelector(s);
+function show(id){["lobby","room","game","finished"].forEach(x=>$("#"+x).classList.toggle("hidden",x!==id))}
+function name(){return ($("#name").value.trim()||"Игрок").slice(0,20)}
+$("#create").onclick=()=>{me=name();socket.emit("createRoom",{name:me})};
+$("#join").onclick=()=>$("#codeBox").classList.toggle("hidden");
+$("#join2").onclick=()=>{me=name();socket.emit("joinRoom",{name:me,roomCode:$("#roomCode").value.trim()})};
+$("#ready").onclick=()=>socket.emit("ready");
+$("#play").onclick=()=>socket.emit("playCard");
+$("#react").onclick=e=>{const b=e.target.closest("button");if(b)socket.emit("reaction",{value:b.dataset.v})};
+socket.on("joined",x=>{roomCode=x.code;$("#code").textContent=roomCode;$("#roomCodeView").textContent=roomCode;show("room")});
+socket.on("errorMessage",m=>alert(m));
+socket.on("state",s=>{
+ if(s.phase==="lobby"){
+   show("room");$("#players").innerHTML=s.players.map(p=>`<div class="player">👤 ${p.name}<br>${p.ready?"✅ готов":"⏳ ждёт"}</div>`).join("");
+   $("#roomStatus").textContent=s.players.length<3?"Нужно 3 игрока. Отправь код друзьям.":s.players.every(p=>p.ready)?"Стартуем!":"Все нажимают «Готов».";
+ } else if(s.phase==="playing"){
+   show("game");$("#center").textContent=s.center;
+   $("#gamePlayers").innerHTML=s.players.map(p=>`<div class="player">${p.id===socket.id?"👤":"🎮"} ${p.name}<br>${p.cards} карт</div>`).join("");
+   if(s.card)$("#card").textContent=s.card.v+s.card.s;
+   const current=s.players[s.turn];$("#status").textContent=s.pending?`⚡ Реакция на ${s.pending}!`:current.id===socket.id?"Твой ход.":"Ход "+current.name;
+   $("#play").disabled=current.id!==socket.id||!!s.pending;
+   $("#react").classList.toggle("hidden",!s.pending);
+   if(s.pending){[...$("#react").children].forEach(b=>b.disabled=false)}
+ }
+});
+socket.on("finished",x=>{$("#winner").textContent=x.winner+" победил!";show("finished")});
+</script>
+</body></html>
